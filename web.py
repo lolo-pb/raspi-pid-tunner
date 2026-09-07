@@ -240,6 +240,7 @@ HTML = r"""<!doctype html>
   <h1>ArduPilot Bench PID Tuner</h1>
   <span id="connectionBadge" class="badge">Disconnected</span>
   <span id="vehicleSummary" class="muted"></span>
+  <span class="muted"> · Network UI: </span><span id="networkUrls" class="good"></span>
   <div class="danger">Powered propellers: secure the one-axis rig, keep people clear, and retain a physical transmitter and power cutoff.</div>
 </header>
 <main>
@@ -247,7 +248,6 @@ HTML = r"""<!doctype html>
     <section>
       <h2>Vehicle control</h2>
       <div class="row"><b>Mode:</b> <span id="mode">UNKNOWN</span> <b>State:</b> <span id="armed">DISARMED</span></div>
-      <div>Network UI: <span id="networkUrls" class="good"></span></div>
       <div id="batterySummary" class="muted"></div>
       <div class="row">
         <button id="stabilize">Set Stabilize</button>

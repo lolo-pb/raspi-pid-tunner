@@ -37,7 +37,9 @@ python3 -m venv .venv
 .venv/bin/python web.py
 ```
 
-Open `http://<raspberry-pi-address>:8000`. The server intentionally has no authentication and must only be used on an isolated, trusted network.
+At startup the server prints each detected private-network URL, and the same address is shown in the Vehicle control panel. Open that URL from a device on the same network, for example `http://192.168.1.42:8000`.
+
+The server intentionally has no authentication and must only be used on an isolated, trusted network.
 
 Options:
 

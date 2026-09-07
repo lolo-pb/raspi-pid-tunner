@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import socket
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -47,9 +48,51 @@ def _call(operation, *args):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def create_app(tuner: MavlinkTuner) -> FastAPI:
+def _web_urls(host: str, port: int) -> list[str]:
+    if host not in {"0.0.0.0", "::"}:
+        return [f"http://{host}:{port}"]
+
+    addresses: set[str] = set()
+    try:
+        addresses.update(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:
+        pass
+    try:
+        import fcntl
+        import struct
+
+        for _, interface_name in socket.if_nameindex():
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as interface:
+                    packed = fcntl.ioctl(
+                        interface.fileno(),
+                        0x8915,  # Linux SIOCGIFADDR
+                        struct.pack("256s", interface_name.encode()[:15]),
+                    )
+                    addresses.add(socket.inet_ntoa(packed[20:24]))
+            except OSError:
+                continue
+    except (ImportError, OSError):
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))
+            addresses.add(probe.getsockname()[0])
+    except OSError:
+        pass
+
+    usable = sorted(address for address in addresses if not address.startswith("127.") and address != "0.0.0.0")
+    if not usable:
+        usable = ["127.0.0.1"]
+    return [f"http://{address}:{port}" for address in usable]
+
+
+def create_app(tuner: MavlinkTuner, host: str = "0.0.0.0", port: int = 8000) -> FastAPI:
+    web_urls = _web_urls(host, port)
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        print("PID tuner UI:\n  " + "\n  ".join(web_urls), flush=True)
         tuner.start()
         try:
             yield
@@ -74,7 +117,9 @@ def create_app(tuner: MavlinkTuner) -> FastAPI:
 
     @application.get("/api/status")
     def status():
-        return tuner.status()
+        result = tuner.status()
+        result["web_urls"] = web_urls
+        return result
 
     @application.get("/api/parameters")
     def parameters(axis: Literal["roll", "pitch", "yaw"]):
@@ -202,6 +247,7 @@ HTML = r"""<!doctype html>
     <section>
       <h2>Vehicle control</h2>
       <div class="row"><b>Mode:</b> <span id="mode">UNKNOWN</span> <b>State:</b> <span id="armed">DISARMED</span></div>
+      <div>Network UI: <span id="networkUrls" class="good"></span></div>
       <div id="batterySummary" class="muted"></div>
       <div class="row">
         <button id="stabilize">Set Stabilize</button>
@@ -277,6 +323,7 @@ async function refreshStatus() {
     $('connectionBadge').textContent = status.connected ? 'Connected' : 'Disconnected';
     $('connectionBadge').className = 'badge' + (status.connected ? ' ok' : '');
     $('vehicleSummary').textContent = ` ${status.vehicle} · ArduPilot ${status.firmware} · ${status.device} @ ${status.baud}`;
+    $('networkUrls').textContent = (status.web_urls || [location.origin]).join(' · ');
     $('mode').textContent = status.mode; $('armed').textContent = status.armed ? 'ARMED' : 'DISARMED';
     $('armed').className = status.armed ? 'error' : 'good';
     $('recording').textContent = status.recording ? `Recording ${status.recording_axis}` : 'Idle';
@@ -415,12 +462,14 @@ loadGains(); refreshStatus(); refreshRuns(); connectWebSocket(); setInterval(ref
 """
 
 
+default_host = os.getenv("PID_TUNER_HOST", "0.0.0.0")
+default_port = int(os.getenv("PID_TUNER_PORT", "8000"))
 default_tuner = MavlinkTuner(
     os.getenv("PID_TUNER_DEVICE", "/dev/serial0"),
     int(os.getenv("PID_TUNER_BAUD", "921600")),
     os.getenv("PID_TUNER_DATA_DIR", "runs"),
 )
-app = create_app(default_tuner)
+app = create_app(default_tuner, default_host, default_port)
 
 
 if __name__ == "__main__":
@@ -432,4 +481,8 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default="runs")
     arguments = parser.parse_args()
     runtime_tuner = MavlinkTuner(arguments.device, arguments.baud, arguments.data_dir)
-    uvicorn.run(create_app(runtime_tuner), host=arguments.host, port=arguments.port)
+    uvicorn.run(
+        create_app(runtime_tuner, arguments.host, arguments.port),
+        host=arguments.host,
+        port=arguments.port,
+    )

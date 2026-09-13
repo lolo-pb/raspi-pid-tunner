@@ -62,10 +62,10 @@ Options:
 4. Press **Start recording**.
 5. Use the rig's external mechanism to push and release the selected axis; never reach into the propeller envelope.
 6. Press **Stop and analyze**.
-7. Disarm, review the traces and metrics, enter new gains, and confirm the write.
-8. Repeat and compare saved runs.
+7. Disarm, review the live traces, enter new gains, and confirm the write.
+8. Repeat the test as needed.
 
-Gain writes are accepted only while disarmed. Each parameter is read back from ArduPilot; a partial failure triggers rollback. Recordings are stored as JSON under `runs/`, and the UI generates CSV exports on demand.
+Gain writes are accepted only while disarmed. Each parameter is read back from ArduPilot; a partial failure triggers rollback. Recordings are stored as JSON under `runs/`.
 
 The normal Disarm action respects ArduPilot safety checks. Force-disarm requires typing `FORCE DISARM` and holding the separate control for three seconds. Force-arm is never available.
 

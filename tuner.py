@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import math
 import threading
@@ -393,53 +391,6 @@ class MavlinkTuner:
             if not self._run:
                 raise TunerError("No recording is active")
             return self._finish_run_locked("completed")
-
-    def list_runs(self) -> list[dict[str, Any]]:
-        runs = []
-        for path in sorted(self.data_dir.glob("*.json"), reverse=True):
-            try:
-                run = json.loads(path.read_text(encoding="utf-8"))
-                runs.append(self._run_summary(run))
-            except (OSError, json.JSONDecodeError, KeyError):
-                continue
-        return runs
-
-    def get_run(self, run_id: str) -> dict[str, Any]:
-        path = self._run_path(run_id)
-        if not path.exists():
-            raise TunerError("Run not found")
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise TunerError(f"Could not read run: {exc}") from exc
-
-    def run_csv(self, run_id: str) -> str:
-        run = self.get_run(run_id)
-        output = io.StringIO()
-        fieldnames = [
-            "t",
-            "target_angle_deg",
-            "actual_angle_deg",
-            "angle_error_deg",
-            "target_rate_deg_s",
-            "actual_rate_deg_s",
-            "accel_x_m_s2",
-            "accel_y_m_s2",
-            "accel_z_m_s2",
-        ]
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        for sample in run["samples"]:
-            acceleration = sample.get("accel_m_s2") or {}
-            writer.writerow(
-                {
-                    **{field: sample.get(field) for field in fieldnames[:6]},
-                    "accel_x_m_s2": acceleration.get("x"),
-                    "accel_y_m_s2": acceleration.get("y"),
-                    "accel_z_m_s2": acceleration.get("z"),
-                }
-            )
-        return output.getvalue()
 
     def _receiver_loop(self) -> None:
         while not self._stop.is_set():

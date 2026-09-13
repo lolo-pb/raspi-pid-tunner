@@ -168,26 +168,6 @@ def create_app(tuner: MavlinkTuner, host: str = "0.0.0.0", port: int = 8000) -> 
     def stop_run():
         return _call(tuner.stop_run)
 
-    @application.get("/api/runs")
-    def runs():
-        return tuner.list_runs()
-
-    @application.get("/api/runs/{run_id}")
-    def run(run_id: str):
-        return _call(tuner.get_run, run_id)
-
-    @application.get("/api/runs/{run_id}/csv", response_class=PlainTextResponse)
-    def run_csv(run_id: str):
-        try:
-            content = tuner.run_csv(run_id)
-        except TunerError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return PlainTextResponse(
-            content,
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{run_id}.csv"'},
-        )
-
     @application.websocket("/ws/telemetry")
     async def telemetry(websocket: WebSocket):
         origin = websocket.headers.get("origin")
@@ -221,7 +201,6 @@ HTML = r"""<!doctype html>
     .header-top h1 { margin:0; }
     #navBatteryVoltage { margin-left:auto; padding:8px 14px; color:var(--text); background:var(--panel); border:1px solid var(--blue); border-radius:7px; font-size:20px; font-weight:700; white-space:nowrap; }
     h1,h2 { margin:0 0 12px; } h1 { font-size:20px; } h2 { font-size:17px; }
-    .danger { margin-top:10px; padding:9px 12px; background:#4a1717; border:1px solid #a33; border-radius:6px; font-weight:700; }
     main { max-width:1400px; margin:auto; padding:16px; display:grid; gap:14px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
     section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; }
@@ -232,10 +211,8 @@ HTML = r"""<!doctype html>
     .badge { display:inline-block; padding:3px 8px; border-radius:99px; background:#3a2630; } .badge.ok { background:#164b34; }
     .muted { color:var(--muted); } .error { color:#ff8585; white-space:pre-wrap; } .good { color:var(--green); }
     canvas { width:100%; height:250px; display:block; background:#0b121a; border:1px solid var(--line); border-radius:5px; }
-    table { width:100%; border-collapse:collapse; } th,td { padding:7px; border-bottom:1px solid var(--line); text-align:left; font-size:13px; }
-    pre { max-height:300px; overflow:auto; background:#0b121a; padding:10px; border-radius:5px; }
     .legend span { margin-right:16px; } .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
-    #forceHold { display:none; } #runTable { overflow:auto; }
+    #forceHold { display:none; }
   </style>
 </head>
 <body>
@@ -247,7 +224,6 @@ HTML = r"""<!doctype html>
   <span id="connectionBadge" class="badge">Disconnected</span>
   <span id="vehicleSummary" class="muted"></span>
   <span class="muted"> · Network UI: </span><span id="networkUrls" class="good"></span>
-  <div class="danger">Powered propellers: secure the one-axis rig, keep people clear, and retain a physical transmitter and power cutoff.</div>
 </header>
 <main>
   <div class="grid">
@@ -292,16 +268,6 @@ HTML = r"""<!doctype html>
     <p class="muted">Angular rate (degrees/second)</p><canvas id="rateChart"></canvas>
   </section>
 
-  <div class="grid">
-    <section><h2>Latest metrics</h2><pre id="metrics">No completed run selected.</pre></section>
-    <section>
-      <h2>Compare runs</h2>
-      <div class="row"><select id="compareA"></select><select id="compareB"></select><button id="compare">Compare</button></div>
-      <p class="muted">Angle error aligned at detected release (seconds)</p><canvas id="compareChart"></canvas>
-    </section>
-  </div>
-
-  <section><h2>Saved runs</h2><div id="runTable"></div></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -391,7 +357,7 @@ $('start').onclick = async () => {
   catch(error){ showError('runMessage',error); }
 };
 $('stop').onclick = async () => {
-  try { const run=await request('/api/runs/stop',{method:'POST'}); $('runMessage').textContent=`Saved ${run.id}`; showMetrics(run.metrics); await refreshRuns(); await refreshStatus(); }
+  try { const run=await request('/api/runs/stop',{method:'POST'}); $('runMessage').textContent=`Saved ${run.id}`; await refreshStatus(); }
   catch(error){ showError('runMessage',error); }
 };
 
@@ -407,8 +373,6 @@ $('forceHold').onpointerdown = () => {
 };
 function cancelForce() { if(forceTimer){clearTimeout(forceTimer);forceTimer=null;} $('forceHold').textContent='Hold 3 seconds: FORCE DISARM'; }
 $('forceHold').onpointerup=cancelForce; $('forceHold').onpointerleave=cancelForce; $('forceHold').onpointercancel=cancelForce;
-
-function showMetrics(metrics) { $('metrics').textContent = metrics ? JSON.stringify(metrics,null,2) : 'Run could not be analyzed.'; }
 
 function drawChart(canvas, series) {
   const ratio=window.devicePixelRatio||1, width=canvas.clientWidth, height=canvas.clientHeight;
@@ -443,26 +407,8 @@ function updateLive(data) {
   ]);
 }
 
-async function refreshRuns() {
-  try {
-    const runs=await request('/api/runs');
-    $('runTable').innerHTML='<table><thead><tr><th>Started</th><th>Axis</th><th>Status</th><th>Samples</th><th>Actions</th></tr></thead><tbody>'+runs.map(run=>`<tr><td>${run.started_at}</td><td>${run.axis}</td><td>${run.status}</td><td>${run.sample_count}</td><td><button data-view="${run.id}">View</button> <a href="/api/runs/${run.id}/csv">CSV</a></td></tr>`).join('')+'</tbody></table>';
-    document.querySelectorAll('[data-view]').forEach(button=>button.onclick=async()=>showMetrics((await request(`/api/runs/${button.dataset.view}`)).metrics));
-    for(const select of [$('compareA'),$('compareB')]){const selected=select.value;select.innerHTML=runs.map(run=>`<option value="${run.id}">${run.started_at} · ${run.axis}</option>`).join('');if(runs.some(run=>run.id===selected))select.value=selected;}
-    if(runs.length>1&&$('compareA').value===$('compareB').value)$('compareB').selectedIndex=1;
-  } catch(error){ $('runTable').textContent=error.message; }
-}
-
-$('compare').onclick=async()=>{
-  try{
-    const [a,b]=await Promise.all([request(`/api/runs/${$('compareA').value}`),request(`/api/runs/${$('compareB').value}`)]);
-    const toPoints=run=>{const release=run.metrics?.release_time_s||0;return run.samples.map(sample=>({x:sample.t-release,y:sample.angle_error_deg}));};
-    drawChart($('compareChart'),[{color:'#55a7ff',points:toPoints(a)},{color:'#ffad5a',points:toPoints(b)}]);
-  }catch(error){showError('runMessage',error);}
-};
-
 function connectWebSocket(){const protocol=location.protocol==='https:'?'wss':'ws';const socket=new WebSocket(`${protocol}://${location.host}/ws/telemetry`);socket.onmessage=event=>updateLive(JSON.parse(event.data));socket.onclose=()=>setTimeout(connectWebSocket,1000);}
-loadGains(); refreshStatus(); refreshRuns(); connectWebSocket(); setInterval(refreshStatus,1000);
+loadGains(); refreshStatus(); connectWebSocket(); setInterval(refreshStatus,1000);
 </script>
 </body>
 </html>

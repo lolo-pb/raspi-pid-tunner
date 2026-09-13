@@ -217,6 +217,9 @@ HTML = r"""<!doctype html>
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui,sans-serif; }
     header { padding:16px 22px; background:#111923; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+    .header-top { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:8px; }
+    .header-top h1 { margin:0; }
+    #navBatteryVoltage { margin-left:auto; padding:8px 14px; color:var(--text); background:var(--panel); border:1px solid var(--blue); border-radius:7px; font-size:20px; font-weight:700; white-space:nowrap; }
     h1,h2 { margin:0 0 12px; } h1 { font-size:20px; } h2 { font-size:17px; }
     .danger { margin-top:10px; padding:9px 12px; background:#4a1717; border:1px solid #a33; border-radius:6px; font-weight:700; }
     main { max-width:1400px; margin:auto; padding:16px; display:grid; gap:14px; }
@@ -237,7 +240,10 @@ HTML = r"""<!doctype html>
 </head>
 <body>
 <header>
-  <h1>ArduPilot Bench PID Tuner</h1>
+  <div class="header-top">
+    <h1>ArduPilot Bench PID Tuner</h1>
+    <span id="navBatteryVoltage">Battery: --</span>
+  </div>
   <span id="connectionBadge" class="badge">Disconnected</span>
   <span id="vehicleSummary" class="muted"></span>
   <span class="muted"> · Network UI: </span><span id="networkUrls" class="good"></span>
@@ -423,6 +429,7 @@ function updateLive(data) {
   const axis=$('axis').value, now=Date.now()/1000;
   const voltage=Number.isFinite(data.battery_voltage_v)?`${data.battery_voltage_v.toFixed(2)} V`:'voltage unavailable';
   const remaining=Number.isFinite(data.battery_remaining_percent)?` · ${data.battery_remaining_percent}%`:'';
+  $('navBatteryVoltage').textContent=`Battery: ${Number.isFinite(data.battery_voltage_v)?`${data.battery_voltage_v.toFixed(2)} V`:'--'}`;
   $('batterySummary').textContent=`Battery: ${voltage}${remaining}`;
   live.push({t:now,targetAngle:data.target_angles_deg[axis],actualAngle:data.angles_deg[axis],targetRate:data.target_rates_deg_s[axis],actualRate:data.rates_deg_s[axis]});
   live=live.filter(point=>point.t>=now-15); const start=live[0]?.t||now;
